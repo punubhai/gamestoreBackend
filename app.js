@@ -1,64 +1,141 @@
-const express = require("express");
+// Express application for handling APK and image file uploads with MongoDB integration
+
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
 const app = express();
-const mongoose = require("mongoose");
+
+// Middleware to parse JSON request bodies
 app.use(express.json());
-const cors = require("cors");
 app.use(cors());
-app.use("/files", express.static("files"));
-//mongodb connection----------------------------------------------
-const mongoUrl =
-  "mongodb+srv://adarsh:adarsh@cluster0.zllye.mongodb.net/?retryWrites=true&w=majority";
 
-mongoose
-  .connect(mongoUrl, {
-    useNewUrlParser: true,
-  })
-  .then(() => {
-    console.log("Connected to database");
-  })
-  .catch((e) => console.log(e));
-//multer------------------------------------------------------------
-const multer = require("multer");
+// Serve static files
+app.use('/files', express.static('files'));
+app.use('/images', express.static('images'));
 
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "./files");
+// Create directories if they don't exist
+if (!fs.existsSync('./files')) {
+  fs.mkdirSync('./files');
+}
+if (!fs.existsSync('./images')) {
+  fs.mkdirSync('./images');
+}
+
+// MongoDB connection
+const mongoUrl = "mongodb+srv://PRATICE123:PRACTICE123@cluster0.3lvbi.mongodb.net/modGame?retryWrites=true&w=majority";
+mongoose.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log('Connected to database'))
+  .catch((e) => {
+    console.error('Database connection error:', e.message);
+    console.error('Error stack:', e.stack);
+  });
+
+// Load the ApkDetails model with added genre and description fields
+const apkDetailsSchema = new mongoose.Schema({
+  title: {
+    type: String,
+    required: true,
   },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now();
-    cb(null, uniqueSuffix + file.originalname);
+  genre: {
+    type: String,
+    required: true,
+  },
+  description: {
+    type: String,
+    required: true,
+  },
+  apk: {
+    type: String,
+    required: true,
+  },
+  image: {
+    type: String,
+    required: true,
   },
 });
 
-require("./pdfDetails");
-const PdfSchema = mongoose.model("PdfDetails");
-const upload = multer({ storage: storage });
+const ApkSchema = mongoose.model('ApkDetails', apkDetailsSchema);
 
-app.post("/upload-files", upload.single("file"), async (req, res) => {
-  console.log(req.file);
-  const title = req.body.title;
-  const fileName = req.file.filename;
+// Multer storage configuration
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    if (file.mimetype === 'application/vnd.android.package-archive') {
+      cb(null, './files');
+    } else if (file.mimetype.startsWith('image/')) {
+      cb(null, './images');
+    } else {
+      cb(new Error('Invalid file type. Only APK and images are allowed!'));
+    }
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + file.originalname;
+    cb(null, uniqueSuffix);
+  },
+});
+
+// File filter to allow only APKs and images
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype === 'application/vnd.android.package-archive' || file.mimetype.startsWith('image/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Invalid file type. Only APK and images are allowed!'), false);
+  }
+};
+
+// Multer configuration with file size limits
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: { fileSize: 200 * 1024 * 1024 }, // Limit file size to 200MB
+});
+
+// API to handle file uploads (APK and Image), now with title, genre, and description
+app.post('/upload-files', upload.fields([{ name: 'apk' }, { name: 'image' }]), async (req, res) => {
+  console.log('Files uploaded:', req.files);
+  console.log('Request body:', req.body);
+
+  const { title, genre, description } = req.body;
+  const apkFile = req.files['apk'] ? req.files['apk'][0].filename : null;
+  const imageFile = req.files['image'] ? req.files['image'][0].filename : null;
+
   try {
-    await PdfSchema.create({ title: title, pdf: fileName });
-    res.send({ status: "ok" });
+    await ApkSchema.create({ title, genre, description, apk: apkFile, image: imageFile });
+    res.send({ status: 'ok', message: 'Files uploaded successfully!' });
   } catch (error) {
-    res.json({ status: error });
+    console.error('Error in file upload:', error.message);
+    res.status(500).json({ status: 'error', message: 'File upload failed', error: error.message });
   }
 });
 
-app.get("/get-files", async (req, res) => {
+// API to retrieve all uploaded files
+app.get('/get-files', async (req, res) => {
   try {
-    PdfSchema.find({}).then((data) => {
-      res.send({ status: "ok", data: data });
-    });
-  } catch (error) {}
+    const data = await ApkSchema.find({}).limit(10); // Implement pagination
+    res.send({ status: 'ok', data: data });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: 'Failed to retrieve files', error: error.message });
+  }
 });
 
-//apis----------------------------------------------------------------
-app.get("/", async (req, res) => {
-  res.send("Success!!!!!!");
+// Base route
+app.get('/', (req, res) => {
+  res.send('Success!!!!!!');
 });
 
+// Custom error handler for Multer and other errors
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    res.status(500).send({ status: 'error', message: err.message });
+  } else if (err) {
+    res.status(500).send({ status: 'error', message: err.message });
+  }
+});
+
+// Start the server
 app.listen(5000, () => {
-  console.log("Server Started");
+  console.log('Server Started on Port 5000');
 });
