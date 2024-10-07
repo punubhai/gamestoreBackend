@@ -1,38 +1,53 @@
-// Express application for handling APK and image file uploads with MongoDB integration
-
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const multer = require('multer'); 
+const path = require('path'); 
+const fs = require('fs'); 
 
-const app = express();
+const app = express(); 
+require('dotenv').config(); 
 
-// Middleware to parse JSON request bodies
-app.use(express.json());
-app.use(cors());
+// Middleware to parse JSON request bodies 
+app.use(express.json()); 
+app.use(cors()); 
 
-// Serve static files
-app.use('/files', express.static('files'));
-app.use('/images', express.static('images'));
+// Serve static files 
+app.use('/files', express.static('files')); 
+app.use('/images', express.static('images')); 
 
-// Create directories if they don't exist
-if (!fs.existsSync('./files')) {
-  fs.mkdirSync('./files');
-}
-if (!fs.existsSync('./images')) {
-  fs.mkdirSync('./images');
-}
+// Create directories if they don't exist 
+if (!fs.existsSync('./files')) { 
+  fs.mkdirSync('./files'); 
+} 
+if (!fs.existsSync('./images')) { 
+  fs.mkdirSync('./images'); 
+} 
 
-// MongoDB connection
-const mongoUrl = "mongodb+srv://PRATICE123:PRACTICE123@cluster0.3lvbi.mongodb.net/modGame?retryWrites=true&w=majority";
-mongoose.connect(mongoUrl, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => console.log('Connected to database'))
-  .catch((e) => {
-    console.error('Database connection error:', e.message);
-    console.error('Error stack:', e.stack);
-  });
+// MongoDB connection with extended timeout and error handling
+const mongoUrl = process.env.MONGO_URI;
+mongoose.connect(mongoUrl, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  connectTimeoutMS: 30000, // Increase the connection timeout to 30 seconds
+  serverSelectionTimeoutMS: 30000, // Timeout for MongoDB server selection
+})
+.then(() => console.log('Connected to database'))
+.catch((e) => {
+  console.error('Database connection error:', e.message);
+  console.error('Error stack:', e.stack);
+});
+
+// MongoDB connection event handlers
+mongoose.connection.on('connected', () => {
+  console.log('Mongoose connected to MongoDB');
+});
+mongoose.connection.on('error', (err) => {
+  console.error('Mongoose connection error:', err);
+});
+mongoose.connection.on('disconnected', () => {
+  console.log('Mongoose disconnected from MongoDB');
+});
 
 // Load the ApkDetails model with added genre and description fields
 const apkDetailsSchema = new mongoose.Schema({
@@ -126,6 +141,16 @@ app.get('/', (req, res) => {
   res.send('Success!!!!!!');
 });
 
+// API to test database connection health
+app.get('/test-db', async (req, res) => {
+  try {
+    await mongoose.connection.db.admin().ping();
+    res.send({ status: 'ok', message: 'Database connection is working!' });
+  } catch (error) {
+    res.status(500).send({ status: 'error', message: 'Database connection failed', error: error.message });
+  }
+});
+
 // Custom error handler for Multer and other errors
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
@@ -136,6 +161,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start the server
-app.listen(5000, () => {
-  console.log('Server Started on Port 5000');
+const PORT = process.env.PORT || 5000; 
+app.listen(PORT, () => { 
+  console.log('Server Started on Port 5000'); 
 });

@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node backend.js"
   },
-  "author": "",
+  "author": "punav",
   "license": "ISC",
   "dependencies": {
     "cloudinary": "^1.41.3",
